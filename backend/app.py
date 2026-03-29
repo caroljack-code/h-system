@@ -1292,10 +1292,20 @@ def report_daily():
             FROM sales
         """
         if start and end:
+            if request.current_user['role'] == 'super_admin':
+                try:
+                    d1 = datetime.datetime.strptime(start, "%Y-%m-%d").date()
+                    d2 = datetime.datetime.strptime(end, "%Y-%m-%d").date()
+                    if (d2 - d1).days + 1 > 7:
+                        return jsonify({"error": "super_admin limited to ranges up to 7 days"}), 403
+                except Exception:
+                    pass
             base += " WHERE DATE(date) BETWEEN ? AND ?"
             base += " GROUP BY DATE(date) ORDER BY sale_date DESC"
             rows = conn.execute(base, (start, end)).fetchall()
         else:
+            if request.current_user['role'] == 'super_admin':
+                base += " WHERE DATE(date) >= DATE('now','-6 days','localtime')"
             base += " GROUP BY DATE(date) ORDER BY sale_date DESC"
             rows = conn.execute(base).fetchall()
         return jsonify({"message": "success", "data": [dict(ix) for ix in rows]})
@@ -1321,10 +1331,20 @@ def report_by_cashier():
             FROM sales
         """
         if start and end:
+            if request.current_user['role'] == 'super_admin':
+                try:
+                    d1 = datetime.datetime.strptime(start, "%Y-%m-%d").date()
+                    d2 = datetime.datetime.strptime(end, "%Y-%m-%d").date()
+                    if (d2 - d1).days + 1 > 7:
+                        return jsonify({"error": "super_admin limited to ranges up to 7 days"}), 403
+                except Exception:
+                    pass
             base += " WHERE DATE(date) BETWEEN ? AND ?"
             base += " GROUP BY cashier ORDER BY cashier"
             rows = conn.execute(base, (start, end)).fetchall()
         else:
+            if request.current_user['role'] == 'super_admin':
+                base += " WHERE DATE(date) >= DATE('now','-6 days','localtime')"
             base += " GROUP BY cashier ORDER BY cashier"
             rows = conn.execute(base).fetchall()
         return jsonify({"message": "success", "data": [dict(ix) for ix in rows]})

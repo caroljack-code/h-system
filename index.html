@@ -279,6 +279,26 @@
                             <tbody id="pm-report-body"></tbody>
                         </table>
                     </div>
+                    <div class="report-card" id="sa-quick-card" style="margin-top:1rem; display:none;">
+                        <h3>Super Admin Quick Totals</h3>
+                        <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem;">
+                            <button class="refresh-btn" onclick="fetchSAQuickTotals(1)"><i class="fa-solid fa-calendar-day"></i> Today</button>
+                            <button class="refresh-btn" onclick="fetchSAQuickTotals(3)"><i class="fa-solid fa-calendar"></i> Last 3 days</button>
+                            <span id="sa-quick-status" style="margin-left:0.5rem;color:#64748b;"></span>
+                        </div>
+                        <table class="report-table">
+                            <thead>
+                                <tr>
+                                    <th>Range</th>
+                                    <th>Sales Count</th>
+                                    <th>Subtotal</th>
+                                    <th>VAT</th>
+                                    <th>Total</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sa-quick-body"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
             

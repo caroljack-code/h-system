@@ -312,6 +312,8 @@ function setupRoleUI() {
             `;
         }
     }
+    const saQuickCard = document.getElementById('sa-quick-card');
+    if (saQuickCard) saQuickCard.style.display = (role === 'super_admin') ? '' : 'none';
     const addBankBtn = document.querySelector('button[onclick="addBank()"]');
     const newBankInput = document.getElementById('new-bank-name');
     const banksCard = newBankInput ? newBankInput.closest('.report-card') : null;
@@ -1811,9 +1813,12 @@ async function fetchItemsReport() {
 function refreshReports() {
     fetchDailyReport();
     if (userRole === 'admin' || userRole === 'super_admin') {
-        if (userRole === 'admin') fetchCashierReport();
+        if (userRole === 'admin' || userRole === 'super_admin') fetchCashierReport();
         fetchPaymentMethodReport();
         fetchItemsReport();
+    }
+    if (userRole === 'super_admin') {
+        fetchSAQuickTotals(1);
     }
     fetchRecentSales();
 }
@@ -1975,6 +1980,53 @@ function highlightInventoryRow(id) {
         setTimeout(() => row.classList.remove('row-highlight'), 1200);
     }
 }
+
+// --- Super Admin Quick Totals (1 day / 3 days) ---
+function formatYMD(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+window.fetchSAQuickTotals = async function(days) {
+    const status = document.getElementById('sa-quick-status');
+    const body = document.getElementById('sa-quick-body');
+    if (!body) return;
+    const today = new Date();
+    const startDate = new Date(today);
+    startDate.setDate(today.getDate() - (Math.max(1, days) - 1));
+    const start = formatYMD(startDate);
+    const end = formatYMD(today);
+    if (status) status.textContent = 'Loading...';
+    body.innerHTML = '<tr><td colspan="5" style="text-align:center;">Loading...</td></tr>';
+    try {
+        const resp = await apiCall(`/api/reports/daily?start=${start}&end=${end}`);
+        const result = await resp.json();
+        if (resp.ok && result.message === 'success') {
+            const rows = result.data || [];
+            const salesCount = rows.reduce((acc, r) => acc + (r.total_sales || 0), 0);
+            const subtotal = rows.reduce((acc, r) => acc + (r.subtotal_sum || 0), 0);
+            const vat = rows.reduce((acc, r) => acc + (r.vat_sum || 0), 0);
+            const total = rows.reduce((acc, r) => acc + (r.total_sum || 0), 0);
+            body.innerHTML = `
+                <tr>
+                    <td>${days === 1 ? 'Today' : `Last ${days} days`}</td>
+                    <td>${salesCount}</td>
+                    <td>KES ${subtotal.toLocaleString()}</td>
+                    <td>KES ${vat.toLocaleString()}</td>
+                    <td>KES ${total.toLocaleString()}</td>
+                </tr>
+            `;
+            if (status) status.textContent = '';
+        } else {
+            body.innerHTML = `<tr><td colspan="5" style="color:red;">Error: ${result.error || 'Unknown error'}</td></tr>`;
+            if (status) status.textContent = '';
+        }
+    } catch (e) {
+        body.innerHTML = '<tr><td colspan="5" style="color:red;">Failed to load</td></tr>';
+        if (status) status.textContent = '';
+    }
+};
 
 // --- Reports: Payment Method Totals ---
 async function fetchPaymentMethodReport() {
