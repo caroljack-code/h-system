@@ -950,8 +950,8 @@ def create_sale():
         subtotal = 0
         for item in items:
             subtotal += float(item['price']) * int(item['quantity'])
-        vat = round(subtotal * 0.16)
-        total = subtotal + vat
+        vat = 0
+        total = subtotal
         cashier = request.current_user['username']
 
         cursor = conn.cursor()

@@ -41,7 +41,7 @@ if (loginApiIndicator) {
 }
 let userRole = localStorage.getItem('pos_role');
 let userName = localStorage.getItem('pos_username');
-const VAT_RATE = 0.16;
+const VAT_RATE = 0;
 
 // DOM Elements
 const productsListEl = document.getElementById('products-list');
