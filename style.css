@@ -298,6 +298,65 @@ body {
     margin-bottom: 1rem;
 }
 
+/* Variant Selector */
+.variant-selector-container {
+    margin-bottom: 1rem;
+}
+
+.variant-selector-container label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.25rem;
+}
+
+.variant-select {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background-color: var(--bg-color);
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.variant-select:focus {
+    border-color: var(--primary-color);
+}
+
+/* Quantity Input */
+.quantity-input-container {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.quantity-input-container label {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.qty-input {
+    width: 70px;
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background-color: var(--bg-color);
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.qty-input:focus {
+    border-color: var(--primary-color);
+}
+
 .product-card button {
     margin-top: auto;
     background-color: var(--surface-color);

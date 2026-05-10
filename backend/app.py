@@ -49,7 +49,29 @@ else:
 app = Flask(__name__, static_url_path='', static_folder=FRONTEND_DIR)
 app.config['SECRET_KEY'] = 'your_secret_key_change_this_in_production'
 CORS(app)
-cloudinary.config(cloudinary_url=os.environ.get('CLOUDINARY_URL', ''), secure=True)
+
+# Cloudinary configuration
+CLOUDINARY_URL = os.environ.get('CLOUDINARY_URL', 'cloudinary://633288168755168:fWtJvHuIIVmRVDnz0PGoR7beeLc@diocrcpdl')
+if CLOUDINARY_URL:
+    # Explicitly parse the URL to ensure api_key and api_secret are set correctly
+    try:
+        # Expected format: cloudinary://api_key:api_secret@cloud_name
+        parts = CLOUDINARY_URL.replace('cloudinary://', '').split('@')
+        creds = parts[0].split(':')
+        cloud_name = parts[1]
+        api_key = creds[0]
+        api_secret = creds[1]
+        cloudinary.config(
+            cloud_name=cloud_name,
+            api_key=api_key,
+            api_secret=api_secret,
+            secure=True
+        )
+    except Exception as e:
+        print(f"Warning: Cloudinary URL parsing failed: {e}. Trying direct URL config.")
+        cloudinary.config(cloudinary_url=CLOUDINARY_URL, secure=True)
+else:
+    cloudinary.config(secure=True)
 
 def get_db_connection():
     conn = sqlite3.connect(DB_NAME)
@@ -876,15 +898,25 @@ def upload_product_image(id):
     file = request.files.get('file')
     if not file:
         return jsonify({"error": "file required"}), 400
-    name = secure_filename(file.filename or '')
-    ext = os.path.splitext(name)[1].lower()
-    if ext not in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
-        return jsonify({"error": "invalid file type"}), 400
-    os.makedirs(PRODUCT_UPLOAD_DIR, exist_ok=True)
-    fname = f"product_{id}_{int(datetime.datetime.utcnow().timestamp())}{ext}"
-    path = os.path.join(PRODUCT_UPLOAD_DIR, fname)
-    file.save(path)
-    url = f"/uploads/products/{fname}"
+    
+    # We use the global Cloudinary config set at the top of the file
+    try:
+        # Upload to Cloudinary
+        upload_result = cloudinary.uploader.upload(file, folder="pimut_pos/products")
+        url = upload_result.get('secure_url')
+    except Exception as e:
+        # Fallback to local storage if Cloudinary upload fails
+        print(f"Cloudinary upload failed: {e}. Falling back to local storage.")
+        name = secure_filename(file.filename or '')
+        ext = os.path.splitext(name)[1].lower()
+        if ext not in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
+            return jsonify({"error": "invalid file type"}), 400
+        os.makedirs(PRODUCT_UPLOAD_DIR, exist_ok=True)
+        fname = f"product_{id}_{int(datetime.datetime.utcnow().timestamp())}{ext}"
+        path = os.path.join(PRODUCT_UPLOAD_DIR, fname)
+        file.save(path)
+        url = f"/uploads/products/{fname}"
+        
     conn = get_db_connection()
     try:
         conn.execute("UPDATE products SET image_url = ? WHERE id = ?", (url, id))
@@ -902,15 +934,22 @@ def upload_brand_logo():
     file = request.files.get('file')
     if not file:
         return jsonify({"error": "file required"}), 400
-    name = secure_filename(file.filename or '')
-    ext = os.path.splitext(name)[1].lower()
-    if ext not in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
-        return jsonify({"error": "invalid file type"}), 400
-    os.makedirs(BRAND_UPLOAD_DIR, exist_ok=True)
-    fname = f"logo{ext}"
-    path = os.path.join(BRAND_UPLOAD_DIR, fname)
-    file.save(path)
-    url = f"/uploads/branding/{fname}"
+    
+    try:
+        upload_result = cloudinary.uploader.upload(file, folder="pimut_pos/branding", public_id="logo")
+        url = upload_result.get('secure_url')
+    except Exception as e:
+        print(f"Cloudinary logo upload failed: {e}. Falling back to local storage.")
+        name = secure_filename(file.filename or '')
+        ext = os.path.splitext(name)[1].lower()
+        if ext not in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
+            return jsonify({"error": "invalid file type"}), 400
+        os.makedirs(BRAND_UPLOAD_DIR, exist_ok=True)
+        fname = f"logo{ext}"
+        path = os.path.join(BRAND_UPLOAD_DIR, fname)
+        file.save(path)
+        url = f"/uploads/branding/{fname}"
+        
     return jsonify({"message": "success", "image_url": url})
 
 @app.route('/api/branding/logo', methods=['GET'])

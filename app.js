@@ -723,10 +723,16 @@ async function loadBrandLogo() {
         const response = await fetch('/api/branding/logo');
         if (!response.ok) return;
         const result = await response.json();
-        const url = result.image_url;
+        let url = result.image_url;
+        
+        // Handle cloud URLs vs local paths
+        if (url && !url.startsWith('http')) {
+            url = (API_BASE ? (API_BASE + url) : url);
+        }
+        
         const logoEl = document.getElementById('app-logo');
         if (logoEl && url) {
-            logoEl.src = url + '?t=' + Date.now();
+            logoEl.src = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
             logoEl.style.display = 'inline-block';
             const fallback = document.querySelector('.fallback-logo');
             if (fallback) fallback.style.display = 'none';
@@ -865,25 +871,66 @@ async function fetchProducts() {
 // Render products to the grid
 function renderProducts(productsToRender) {
     productsListEl.innerHTML = '';
-    productsToRender.forEach(product => {
+    
+    // Filter to show only main products (where parent_id is null or 0)
+    // Variations will be selectable inside these cards
+    const mainProducts = productsToRender.filter(p => !p.parent_id);
+    
+    mainProducts.forEach(product => {
+        const productVariants = products.filter(v => v.parent_id === product.id);
+        const hasVariants = productVariants.length > 0;
+        
         const productCard = document.createElement('div');
         productCard.className = 'product-card' + (product.low_stock ? ' low-stock' : '');
-        const imgHtml = product.image_url ? `<img src="${product.image_url}" alt="${product.name}" style="width:100%;height:160px;object-fit:cover;border-radius:12px;margin-bottom:8px;">` : '';
+        productCard.id = `product-card-${product.id}`;
+        
+        // Helper to get full image URL (handles both cloud URLs and local paths)
+        const getImageUrl = (url) => {
+            if (!url) return '';
+            if (url.startsWith('http')) return url;
+            // If it's a relative local path, prepend API_BASE
+            return API_BASE ? (API_BASE + url) : url;
+        };
+
+        const currentImageUrl = getImageUrl(product.image_url);
+        const imgHtml = currentImageUrl ? `<img id="img-${product.id}" src="${currentImageUrl}" alt="${product.name}" style="width:100%;height:160px;object-fit:cover;border-radius:12px;margin-bottom:8px;">` : `<div id="img-${product.id}"></div>`;
+        
         const adminControls = (userRole === 'admin' || userRole === 'super_admin' || userRole === 'assistant')
             ? `<div style="display:flex;gap:8px;margin-top:8px;">
                    <button onclick="setProductImage(${product.id})" class="secondary-btn" style="padding:6px 10px;">Set Image</button>
                    ${product.image_url ? `<button onclick="removeProductImage(${product.id})" class="secondary-btn danger" style="padding:6px 10px;">Remove</button>` : ''}
-                   <button onclick="openVariants(${product.id}, '${String(product.name).replace(/'/g, "\\'")}')" class="secondary-btn" style="padding:6px 10px;">Variants</button>
+                   <button onclick="openVariants(${product.id}, '${String(product.name).replace(/'/g, "\\'")}')" class="secondary-btn" style="padding:6px 10px;">Add Variants</button>
                </div>`
             : '';
+
+        let variantSelectorHtml = '';
+        if (hasVariants) {
+            variantSelectorHtml = `
+                <div class="variant-selector-container">
+                    <label>Select Variant:</label>
+                    <select onchange="handleVariantChange(${product.id}, this.value)" class="variant-select">
+                        <option value="${product.id}">Main Product</option>
+                        ${productVariants.map(v => `<option value="${v.id}">${v.name.replace(product.name, '').replace(/[()]/g, '').trim() || 'Default'}</option>`).join('')}
+                    </select>
+                </div>
+            `;
+        }
+
         productCard.innerHTML = `
             ${product.low_stock ? '<span class="low-stock-badge"><i class="fa-solid fa-triangle-exclamation"></i> Low stock</span>' : ''}
             ${imgHtml}
             <h3>${product.name}</h3>
             <p class="category">${product.category}</p>
-            <p class="price">KES ${product.price.toLocaleString()}</p>
-            <p class="stock">Stock: ${product.stock}</p>
-            <button onclick="addToCart(${product.id})" ${product.stock === 0 ? 'disabled' : ''}>
+            <div id="price-stock-${product.id}">
+                <p class="price">KES ${product.price.toLocaleString()}</p>
+                <p class="stock">Stock: ${product.stock}</p>
+            </div>
+            ${variantSelectorHtml}
+            <div class="quantity-input-container">
+                <label>Qty:</label>
+                <input type="number" id="qty-input-${product.id}" value="1" min="1" max="${product.stock}" class="qty-input">
+            </div>
+            <button id="add-btn-${product.id}" onclick="addToCart(${product.id}, document.getElementById('qty-input-${product.id}').value)" ${product.stock === 0 ? 'disabled' : ''}>
                 ${product.stock === 0 ? 'Out of Stock' : '<i class="fa-solid fa-cart-plus"></i> Add to Cart'}
             </button>
             ${adminControls}
@@ -892,6 +939,89 @@ function renderProducts(productsToRender) {
     });
     ensureBarcodeFocus();
 }
+
+window.handleVariantChange = function(parentId, variantId) {
+    const selectedVariantId = parseInt(variantId);
+    const variant = products.find(p => p.id === selectedVariantId);
+    if (!variant) return;
+
+    // Update price and stock display
+    const priceStockEl = document.getElementById(`price-stock-${parentId}`);
+    if (priceStockEl) {
+        priceStockEl.innerHTML = `
+            <p class="price">KES ${variant.price.toLocaleString()}</p>
+            <p class="stock">Stock: ${variant.stock}</p>
+        `;
+    }
+
+    // Update image if variant has one, otherwise fallback to parent image
+    const parent = products.find(p => p.id === parentId);
+    const imgEl = document.getElementById(`img-${parentId}`);
+    
+    // Helper to get full image URL (reused from renderProducts logic)
+    const getImageUrl = (url) => {
+        if (!url) return '';
+        if (url.startsWith('http')) return url;
+        return API_BASE ? (API_BASE + url) : url;
+    };
+
+    if (imgEl) {
+        const targetImgUrl = getImageUrl(variant.image_url || parent.image_url);
+        if (targetImgUrl) {
+            if (imgEl.tagName === 'IMG') {
+                imgEl.src = targetImgUrl;
+            } else {
+                // It was a placeholder div, replace it with an img
+                const newImg = document.createElement('img');
+                newImg.id = `img-${parentId}`;
+                newImg.src = targetImgUrl;
+                newImg.alt = variant.name;
+                newImg.style.cssText = "width:100%;height:160px;object-fit:cover;border-radius:12px;margin-bottom:8px;";
+                imgEl.replaceWith(newImg);
+            }
+        } else if (imgEl.tagName === 'IMG') {
+            // Both variant and parent have no image, replace img with placeholder div
+            const placeholder = document.createElement('div');
+            placeholder.id = `img-${parentId}`;
+            imgEl.replaceWith(placeholder);
+        }
+    }
+
+    // Update Add to Cart button
+    const addBtn = document.getElementById(`add-btn-${parentId}`);
+    const qtyInput = document.getElementById(`qty-input-${parentId}`);
+    if (addBtn) {
+        addBtn.setAttribute('onclick', `addToCart(${variant.id}, document.getElementById('qty-input-${parentId}').value)`);
+        addBtn.disabled = variant.stock === 0;
+        addBtn.innerHTML = variant.stock === 0 ? 'Out of Stock' : '<i class="fa-solid fa-cart-plus"></i> Add to Cart';
+    }
+    
+    // Update max quantity on input
+    if (qtyInput) {
+        qtyInput.max = variant.stock;
+        if (parseInt(qtyInput.value) > variant.stock) {
+            qtyInput.value = variant.stock;
+        }
+    }
+
+    // Update low stock badge if necessary
+    const card = document.getElementById(`product-card-${parentId}`);
+    if (card) {
+        if (variant.low_stock) {
+            card.classList.add('low-stock');
+            if (!card.querySelector('.low-stock-badge')) {
+                const badge = document.createElement('span');
+                badge.className = 'low-stock-badge';
+                badge.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Low stock';
+                card.prepend(badge);
+            }
+        } else {
+            card.classList.remove('low-stock');
+            const badge = card.querySelector('.low-stock-badge');
+            if (badge) badge.remove();
+        }
+    }
+};
 
 // ----- Variants -----
 window.openVariants = function(productId, productName) {
@@ -1187,6 +1317,11 @@ async function uploadProductImage(productId, file) {
         });
         const result = await response.json();
         if (response.ok && result.message === 'success') {
+            // Update local state directly so it reflects everywhere immediately
+            const product = products.find(p => p.id === productId);
+            if (product) {
+                product.image_url = result.image_url;
+            }
             fetchProducts();
         } else {
             alert('Image upload failed: ' + (result.error || 'Unknown error'));
@@ -1210,24 +1345,35 @@ if (productSearchInput) {
 // Payment method listener removed (replaced by handlePaymentChange above)
 
 // Add item to cart
-window.addToCart = function(productId) {
+window.addToCart = function(productId, quantity = 1) {
     const product = products.find(p => p.id === productId);
     if (!product || product.stock === 0) return;
+    
+    // Ensure quantity is a valid number and at least 1
+    const qtyToAdd = parseInt(quantity);
+    if (isNaN(qtyToAdd) || qtyToAdd < 1) {
+        alert('Please enter a valid quantity');
+        return;
+    }
 
     const cartItem = cart.find(item => item.productId === productId);
     if (cartItem) {
-        if (cartItem.quantity < product.stock) {
-            cartItem.quantity++;
+        if (cartItem.quantity + qtyToAdd <= product.stock) {
+            cartItem.quantity += qtyToAdd;
         } else {
             alert('Cannot add more than available stock');
         }
     } else {
-        cart.push({
-            productId: product.id,
-            name: product.name,
-            price: product.price,
-            quantity: 1
-        });
+        if (qtyToAdd <= product.stock) {
+            cart.push({
+                productId: product.id,
+                name: product.name,
+                price: product.price,
+                quantity: qtyToAdd
+            });
+        } else {
+            alert('Cannot add more than available stock');
+        }
     }
     renderCart();
 };
