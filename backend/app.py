@@ -51,16 +51,36 @@ app.config['SECRET_KEY'] = 'your_secret_key_change_this_in_production'
 CORS(app)
 
 # Cloudinary configuration
-CLOUDINARY_URL = os.environ.get('CLOUDINARY_URL')
-if CLOUDINARY_URL:
+def configure_cloudinary():
+    # Priority 1: Environment variable (Vercel/Production)
+    url = os.environ.get('CLOUDINARY_URL')
+    
+    # Priority 2: Hardcoded fallback (if no environment variable set)
+    if not url:
+        url = 'cloudinary://633288168755168:fWtJvHuIIVmRVDnz0PGoR7beeLc@diocrcpdl'
+    
     try:
-        cloudinary.config(cloudinary_url=CLOUDINARY_URL, secure=True)
+        # Explicitly parse the URL to ensure api_key and api_secret are set correctly
+        # Format: cloudinary://api_key:api_secret@cloud_name
+        clean_url = url.replace('cloudinary://', '').strip()
+        auth_part, cloud_name = clean_url.split('@')
+        api_key, api_secret = auth_part.split(':')
+        
+        cloudinary.config(
+            cloud_name=cloud_name,
+            api_key=api_key,
+            api_secret=api_secret,
+            secure=True
+        )
+        print(f"Cloudinary configured successfully for cloud: {cloud_name}")
     except Exception as e:
-        print(f"Warning: Cloudinary config failed: {e}")
-else:
-    # Fallback to hardcoded default if no env var set (for backward compatibility)
-    DEFAULT_CLOUDINARY = 'cloudinary://633288168755168:fWtJvHuIIVmRVDnz0PGoR7beeLc@diocrcpdl'
-    cloudinary.config(cloudinary_url=DEFAULT_CLOUDINARY, secure=True)
+        print(f"Warning: Cloudinary explicit config failed: {e}. Trying generic config.")
+        try:
+            cloudinary.config(cloudinary_url=url, secure=True)
+        except Exception as e2:
+            print(f"Error: Cloudinary total config failure: {e2}")
+
+configure_cloudinary()
 
 def get_db_connection():
     conn = sqlite3.connect(DB_NAME)
