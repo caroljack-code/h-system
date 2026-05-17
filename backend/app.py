@@ -51,27 +51,16 @@ app.config['SECRET_KEY'] = 'your_secret_key_change_this_in_production'
 CORS(app)
 
 # Cloudinary configuration
-CLOUDINARY_URL = os.environ.get('CLOUDINARY_URL', 'cloudinary://633288168755168:fWtJvHuIIVmRVDnz0PGoR7beeLc@diocrcpdl')
+CLOUDINARY_URL = os.environ.get('CLOUDINARY_URL')
 if CLOUDINARY_URL:
-    # Explicitly parse the URL to ensure api_key and api_secret are set correctly
     try:
-        # Expected format: cloudinary://api_key:api_secret@cloud_name
-        parts = CLOUDINARY_URL.replace('cloudinary://', '').split('@')
-        creds = parts[0].split(':')
-        cloud_name = parts[1]
-        api_key = creds[0]
-        api_secret = creds[1]
-        cloudinary.config(
-            cloud_name=cloud_name,
-            api_key=api_key,
-            api_secret=api_secret,
-            secure=True
-        )
-    except Exception as e:
-        print(f"Warning: Cloudinary URL parsing failed: {e}. Trying direct URL config.")
         cloudinary.config(cloudinary_url=CLOUDINARY_URL, secure=True)
+    except Exception as e:
+        print(f"Warning: Cloudinary config failed: {e}")
 else:
-    cloudinary.config(secure=True)
+    # Fallback to hardcoded default if no env var set (for backward compatibility)
+    DEFAULT_CLOUDINARY = 'cloudinary://633288168755168:fWtJvHuIIVmRVDnz0PGoR7beeLc@diocrcpdl'
+    cloudinary.config(cloudinary_url=DEFAULT_CLOUDINARY, secure=True)
 
 def get_db_connection():
     conn = sqlite3.connect(DB_NAME)
@@ -320,14 +309,14 @@ def role_required_strict(allowed_roles):
 @app.route('/uploads/<path:filename>')
 def serve_uploads(filename):
     # Try /tmp first (for new uploads on Vercel)
-    tmp_path = os.path.join('/tmp', 'uploads', filename)
-    if os.path.exists(tmp_path):
-        return send_from_directory(os.path.dirname(tmp_path), os.path.basename(tmp_path))
+    tmp_dir = os.path.join('/tmp', 'uploads')
+    if os.path.exists(os.path.join(tmp_dir, filename)):
+        return send_from_directory(tmp_dir, filename)
     
     # Try repo path (for pre-existing files)
-    repo_path = os.path.join(BASE_DIR, 'uploads', filename)
-    if os.path.exists(repo_path):
-        return send_from_directory(os.path.dirname(repo_path), os.path.basename(repo_path))
+    repo_dir = os.path.join(BASE_DIR, 'uploads')
+    if os.path.exists(os.path.join(repo_dir, filename)):
+        return send_from_directory(repo_dir, filename)
         
     return make_response("File not found", 404)
 
@@ -697,14 +686,6 @@ def get_products_for_pos():
         data.append(d)
     return jsonify({"message": "success", "data": data})
 
-@app.route('/uploads/products/<path:filename>')
-def serve_product_upload(filename):
-    return send_from_directory(PRODUCT_UPLOAD_DIR, filename)
-
-@app.route('/uploads/branding/<path:filename>')
-def serve_brand_upload(filename):
-    return send_from_directory(BRAND_UPLOAD_DIR, filename)
-
 @app.route('/api/products', methods=['POST'])
 @token_required
 @role_required(['admin', 'assistant'])
@@ -899,14 +880,30 @@ def upload_product_image(id):
     if not file:
         return jsonify({"error": "file required"}), 400
     
+    is_vercel = os.environ.get('VERCEL') or os.environ.get('AWS_LAMBDA_FUNCTION_NAME')
+    url = None
+
     # We use the global Cloudinary config set at the top of the file
     try:
-        # Upload to Cloudinary
-        upload_result = cloudinary.uploader.upload(file, folder="pimut_pos/products")
+        # Generate a unique public_id using product ID and timestamp to avoid overwrites
+        timestamp = int(datetime.datetime.utcnow().timestamp())
+        public_id = f"product_{id}_{timestamp}"
+        
+        upload_result = cloudinary.uploader.upload(
+            file, 
+            folder="pimut_pos/products",
+            public_id=public_id,
+            overwrite=True,
+            invalidate=True
+        )
         url = upload_result.get('secure_url')
     except Exception as e:
-        # Fallback to local storage if Cloudinary upload fails
-        print(f"Cloudinary upload failed: {e}. Falling back to local storage.")
+        print(f"Cloudinary upload failed: {e}")
+        # Fallback to local storage ONLY if not on Vercel
+        if is_vercel:
+            return jsonify({"error": f"Cloudinary upload failed and local storage is not persistent on Vercel: {str(e)}"}), 500
+        
+        print("Falling back to local storage.")
         name = secure_filename(file.filename or '')
         ext = os.path.splitext(name)[1].lower()
         if ext not in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
@@ -914,9 +911,13 @@ def upload_product_image(id):
         os.makedirs(PRODUCT_UPLOAD_DIR, exist_ok=True)
         fname = f"product_{id}_{int(datetime.datetime.utcnow().timestamp())}{ext}"
         path = os.path.join(PRODUCT_UPLOAD_DIR, fname)
+        file.seek(0)
         file.save(path)
         url = f"/uploads/products/{fname}"
         
+    if not url:
+        return jsonify({"error": "Failed to determine image URL"}), 500
+
     conn = get_db_connection()
     try:
         conn.execute("UPDATE products SET image_url = ? WHERE id = ?", (url, id))
@@ -947,6 +948,7 @@ def upload_brand_logo():
         os.makedirs(BRAND_UPLOAD_DIR, exist_ok=True)
         fname = f"logo{ext}"
         path = os.path.join(BRAND_UPLOAD_DIR, fname)
+        file.seek(0)
         file.save(path)
         url = f"/uploads/branding/{fname}"
         
@@ -1258,7 +1260,9 @@ def set_product_image(id):
     try:
         secure_url = None
         if os.environ.get('CLOUDINARY_URL'):
-            upload_result = cloudinary.uploader.upload(image_url, folder="pimut/products", public_id=f"product_{id}", overwrite=True)
+            timestamp = int(datetime.datetime.utcnow().timestamp())
+            public_id = f"product_{id}_{timestamp}"
+            upload_result = cloudinary.uploader.upload(image_url, folder="pimut_pos/products", public_id=public_id, overwrite=True)
             secure_url = upload_result.get('secure_url') or upload_result.get('url')
             if not secure_url:
                 return jsonify({"error": "Upload failed"}), 400
@@ -1277,7 +1281,7 @@ def set_product_image(id):
 @role_required(['admin', 'assistant'])
 def remove_product_image(id):
     try:
-        cloudinary.uploader.destroy(f"pimut/products/product_{id}", invalidate=True)
+        cloudinary.uploader.destroy(f"pimut_pos/products/product_{id}", invalidate=True)
     except Exception:
         pass
     conn = get_db_connection()

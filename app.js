@@ -23,9 +23,9 @@ try {
         API_BASE = '';
         localStorage.removeItem('pos_api_base');
     } else if (isLocal && API_BASE) {
-        // Allow both localhost and 127.0.0.1 interchangeably during local dev
-        const isApiLocal = /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?$/i.test(API_BASE);
-        if (!isApiLocal) {
+        // Allow localhost, 127.0.0.1, or local network IPs (192.168.x.x, 10.x.x.x, etc.)
+        const isApiLocalOrLAN = /^(https?:\/\/)?(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+)(:\d+)?$/i.test(API_BASE);
+        if (!isApiLocalOrLAN) {
             API_BASE = '';
             localStorage.removeItem('pos_api_base');
         }
@@ -889,7 +889,17 @@ function renderProducts(productsToRender) {
             if (!url) return '';
             if (url.startsWith('http')) return url;
             // If it's a relative local path, prepend API_BASE
-            return API_BASE ? (API_BASE + url) : url;
+            // But if API_BASE is just localhost/127.0.0.1 and we are on a different device, 
+            // it's better to use relative paths if we're on the same origin
+            if (API_BASE) {
+                try {
+                    const baseHost = new URL(API_BASE).host;
+                    const currentHost = location.host;
+                    if (baseHost === currentHost) return url;
+                } catch(e) {}
+                return API_BASE + url;
+            }
+            return url;
         };
 
         const currentImageUrl = getImageUrl(product.image_url);
@@ -962,7 +972,15 @@ window.handleVariantChange = function(parentId, variantId) {
     const getImageUrl = (url) => {
         if (!url) return '';
         if (url.startsWith('http')) return url;
-        return API_BASE ? (API_BASE + url) : url;
+        if (API_BASE) {
+            try {
+                const baseHost = new URL(API_BASE).host;
+                const currentHost = location.host;
+                if (baseHost === currentHost) return url;
+            } catch(e) {}
+            return API_BASE + url;
+        }
+        return url;
     };
 
     if (imgEl) {
@@ -1310,7 +1328,12 @@ async function uploadProductImage(productId, file) {
     try {
         const form = new FormData();
         form.append('file', file);
-        const response = await fetch(`/api/products/${productId}/image/upload`, {
+        // Use relative path if same origin, otherwise prepend API_BASE
+        const uploadUrl = (API_BASE && !API_BASE.includes(location.host)) 
+            ? `${API_BASE}/api/products/${productId}/image/upload` 
+            : `/api/products/${productId}/image/upload`;
+            
+        const response = await fetch(uploadUrl, {
             method: 'POST',
             headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {},
             body: form
@@ -1321,8 +1344,10 @@ async function uploadProductImage(productId, file) {
             const product = products.find(p => p.id === productId);
             if (product) {
                 product.image_url = result.image_url;
+                renderProducts(products); // Re-render immediately with new image
             }
-            fetchProducts();
+            // Background fetch to ensure everything is in sync
+            await fetchProducts();
         } else {
             alert('Image upload failed: ' + (result.error || 'Unknown error'));
         }
@@ -2050,13 +2075,14 @@ window.createProduct = async function() {
             stockEl.value = '';
             if (minEl) minEl.value = '';
             if (barcodeEl) barcodeEl.value = '';
+            if (imageFileEl) imageFileEl.value = ''; // Clear the file input
             const newId = result.id;
             const file = imageFileEl && imageFileEl.files && imageFileEl.files[0];
             if (file && newId) {
                 await uploadProductImage(newId, file);
             }
             if (errEl) errEl.style.display = 'none';
-            fetchProducts();
+            await fetchProducts(); // Await the refresh
             alert('Product added successfully');
         } else {
             const msg = result.error || 'Failed to add product';

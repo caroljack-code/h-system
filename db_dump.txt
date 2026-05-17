@@ -1,0 +1,9 @@
+{'id': 1, 'name': 'Samsung 43" Smart TV', 'image_url': 'https://res.cloudinary.com/diocrcpdl/image/upload/v1778434624/pimut_pos/products/kvly2qqhaav6jzj0gwwy.jpg'}
+{'id': 2, 'name': 'Blender 500W', 'image_url': 'https://res.cloudinary.com/diocrcpdl/image/upload/v1778434611/pimut_pos/products/rbe50to9pzbezfgxo0dw.jpg'}
+{'id': 3, 'name': 'Double Bedsheet Set', 'image_url': 'https://res.cloudinary.com/diocrcpdl/image/upload/v1778434548/pimut_pos/products/icquhs8hyyvxpfwzmoxc.jpg'}
+{'id': 4, 'name': 'Non-stick Cookware Set', 'image_url': 'https://res.cloudinary.com/diocrcpdl/image/upload/v1778434796/pimut_pos/products/bufwr2ikbxnu37gufbb7.jpg'}
+{'id': 5, 'name': 'Bluetooth Speaker', 'image_url': 'https://res.cloudinary.com/diocrcpdl/image/upload/v1778437159/pimut_pos/products/jpnt2tvwdd7ybo88ixcy.jpg'}
+{'id': 6, 'name': 'Electric Kettle', 'image_url': 'https://res.cloudinary.com/diocrcpdl/image/upload/v1778437170/pimut_pos/products/nx7ph6oanjgicc3we7nk.jpg'}
+{'id': 10, 'name': 'cups', 'image_url': '/uploads/products/product_10_1769941013.jpg'}
+{'id': 11, 'name': 'plates', 'image_url': '/uploads/products/product_11_1770578835.jpg'}
+{'id': 12, 'name': 'bowls', 'image_url': '/uploads/products/product_12_1770579342.jpg'}
